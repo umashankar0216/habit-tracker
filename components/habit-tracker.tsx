@@ -75,44 +75,26 @@ export default function HabitTracker() {
   }, [selectedUserId, currentMonth, currentYear])
 
   const loadCurrentUser = async () => {
-    try {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser()
-      
-      if (authError) {
-        console.error("[v0] Auth error loading user:", authError)
-      }
-      
-      if (user) {
-        setCurrentUser(user)
-        setSelectedUserId(user.id)
-        console.log("[v0] Current user loaded:", user.email)
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (user) {
+      setCurrentUser(user)
+      setSelectedUserId(user.id)
 
-        const { data, error } = await supabase
-          .from("users")
-          .select("is_admin, name, active_group_id, role")
-          .eq("id", user.id)
-          .single()
-        
-        if (error) {
-          console.warn("[v0] Could not load user details:", error)
-        }
-        
-        if (data?.is_admin) {
-          setIsAdmin(true)
-          console.log("[v0] Current user is admin, can see all data")
-        }
-        if (data?.role === "host") {
-          setIsHost(true)
-          console.log("[v0] Current user is a host")
-        }
-      } else {
-        console.log("[v0] No authenticated user found")
+      const { data } = await supabase
+        .from("users")
+        .select("is_admin, name, role")
+        .eq("id", user.id)
+        .single()
+      if (data?.is_admin) {
+        setIsAdmin(true)
+        console.log("[v0] Current user is admin, can see all data")
       }
-    } catch (err) {
-      console.error("[v0] Exception loading current user:", err)
+      if (data?.role === "host") {
+        setIsHost(true)
+        console.log("[v0] Current user is a host")
+      }
     }
     setLoading(false)
   }
@@ -121,126 +103,88 @@ export default function HabitTracker() {
     if (!currentUser) return
 
     const { data, error } = await supabase
-      .from("group_members")
-      .select(`
-        user:users(*)
-      `)
-      .eq("group_members.group_id", currentUser.active_group_id || "")
+      .from("users")
+      .select("id, name, is_private, role")
+      .order("name")
 
     if (!error && data) {
-      const users = data.map((item: any) => item.user).filter(Boolean)
-      setAllUsers(users)
+      setAllUsers(data)
     }
   }
 
   const loadHabitsAndSleep = async () => {
-    try {
-      const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`
+    const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`
 
-      const { data: habitsData, error: habitsError } = await supabase
-        .from("habits")
-        .select("*, habit_completions(*)")
-        .eq("user_id", selectedUserId)
-        .eq("month", monthKey)
+    const { data: habitsData, error: habitsError } = await supabase
+      .from("habits")
+      .select("*, habit_completions(*)")
+      .eq("user_id", selectedUserId)
+      .eq("month", monthKey)
 
-      if (habitsError) {
-        console.warn("[v0] Error loading habits:", habitsError)
-      } else if (habitsData) {
-        console.log("[v0] Habits loaded:", habitsData.length)
-        const transformedHabits = habitsData.map((h: any) => ({
-          id: h.id,
-          name: h.name,
-          completedDays: new Set(h.habit_completions.filter((c: any) => c.completed).map((c: any) => c.day)),
-        }))
-        setHabits(transformedHabits)
-      }
+    if (!habitsError && habitsData) {
+      const transformedHabits = habitsData.map((h: any) => ({
+        id: h.id,
+        name: h.name,
+        completedDays: new Set(h.habit_completions.filter((c: any) => c.completed).map((c: any) => c.day)),
+      }))
+      setHabits(transformedHabits)
+    }
 
-      const { data: sleepData, error: sleepError } = await supabase
-        .from("sleep_tracking")
-        .select("*")
-        .eq("user_id", selectedUserId)
-        .eq("month", monthKey)
+    const { data: sleepData, error: sleepError } = await supabase
+      .from("sleep_tracking")
+      .select("*")
+      .eq("user_id", selectedUserId)
+      .eq("month", monthKey)
 
-      if (sleepError) {
-        console.warn("[v0] Error loading sleep data:", sleepError)
-      } else if (sleepData) {
-        const sleepObj: SleepLog = {}
-        sleepData.forEach((s: any) => {
-          sleepObj[s.day] = s.hours
-        })
-        setSleepLog(sleepObj)
-      }
-    } catch (err) {
-      console.error("[v0] Exception loading habits and sleep:", err)
+    if (!sleepError && sleepData) {
+      const sleepObj: SleepLog = {}
+      sleepData.forEach((s: any) => {
+        sleepObj[s.day] = s.hours
+      })
+      setSleepLog(sleepObj)
     }
   }
 
   const addHabit = async (name: string) => {
-    if (!currentUser) {
-      console.log("[v0] No current user, cannot add habit")
-      return
-    }
+    if (!currentUser) return
 
     const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`
 
-    try {
-      const { data, error } = await supabase
-        .from("habits")
-        .insert({
-          user_id: currentUser.id,
-          name,
-          month: monthKey,
-        })
-        .select()
-        .single()
+    const { data, error } = await supabase
+      .from("habits")
+      .insert({
+        user_id: currentUser.id,
+        name,
+        month: monthKey,
+      })
+      .select()
+      .single()
 
-      if (error) {
-        console.error("[v0] Error adding habit:", error)
-        alert("Failed to add habit. Check if Supabase is connected.")
-        return
-      }
-
-      if (data) {
-        console.log("[v0] Habit added successfully:", data)
-        setHabits([
-          ...habits,
-          {
-            id: data.id,
-            name: data.name,
-            completedDays: new Set(),
-          },
-        ])
-      }
-    } catch (err) {
-      console.error("[v0] Exception adding habit:", err)
-      alert("Error adding habit. Check console for details.")
+    if (error || !data) {
+      throw new Error("Unable to save habit")
     }
+
+    setHabits([
+      ...habits,
+      {
+        id: data.id,
+        name: data.name,
+        completedDays: new Set(),
+      },
+    ])
   }
 
   const deleteHabit = async (id: string) => {
-    try {
-      const { error } = await supabase.from("habits").delete().eq("id", id)
+    const { error } = await supabase.from("habits").delete().eq("id", id)
 
-      if (error) {
-        console.error("[v0] Error deleting habit:", error)
-        alert("Failed to delete habit")
-        return
-      }
-
-      console.log("[v0] Habit deleted successfully:", id)
+    if (!error) {
       setHabits(habits.filter((h) => h.id !== id))
-    } catch (err) {
-      console.error("[v0] Exception deleting habit:", err)
-      alert("Error deleting habit. Check console for details.")
     }
   }
 
   const toggleDay = async (habitId: string, day: number) => {
     const habit = habits.find((h) => h.id === habitId)
-    if (!habit) {
-      console.warn("[v0] Habit not found:", habitId)
-      return
-    }
+    if (!habit) return
 
     const isCompleted = habit.completedDays.has(day)
 
@@ -252,25 +196,18 @@ export default function HabitTracker() {
       timestamp: Date.now(),
     })
 
-    try {
-      const { error } = await supabase.from("habit_completions").upsert(
-        {
-          habit_id: habitId,
-          day,
-          completed: !isCompleted,
-        },
-        {
-          onConflict: "habit_id,day",
-        },
-      )
+    const { error } = await supabase.from("habit_completions").upsert(
+      {
+        habit_id: habitId,
+        day,
+        completed: !isCompleted,
+      },
+      {
+        onConflict: "habit_id,day",
+      },
+    )
 
-      if (error) {
-        console.error("[v0] Error toggling habit completion:", error)
-        alert("Failed to update habit. Check console for details.")
-        return
-      }
-
-      console.log("[v0] Habit completion updated:", habitId, "day:", day)
+    if (!error) {
       setHabits(
         habits.map((h) => {
           if (h.id === habitId) {
@@ -285,54 +222,40 @@ export default function HabitTracker() {
           return h
         }),
       )
-    } catch (err) {
-      console.error("[v0] Exception toggling habit completion:", err)
-      alert("Error updating habit. Check console for details.")
     }
   }
 
   const updateSleep = async (day: number, hours: number) => {
-    if (!selectedUserId) {
-      console.warn("[v0] No user selected for sleep update")
-      return
-    }
+    if (!selectedUserId) return
 
     const monthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`
+
+    const previousHours = sleepLog[day] || 0
 
     setUndoAction({
       type: "sleep",
       day,
-      previousValue: sleepLog[day] || 0,
+      previousValue: previousHours,
       timestamp: Date.now(),
     })
 
-    try {
-      const { error } = await supabase.from("sleep_tracking").upsert(
-        {
-          user_id: selectedUserId,
-          month: monthKey,
-          day,
-          hours,
-        },
-        {
-          onConflict: "user_id,month,day",
-        },
-      )
+    const { error } = await supabase.from("sleep_tracking").upsert(
+      {
+        user_id: selectedUserId,
+        month: monthKey,
+        day,
+        hours,
+      },
+      {
+        onConflict: "user_id,month,day",
+      },
+    )
 
-      if (error) {
-        console.error("[v0] Error updating sleep:", error)
-        alert("Failed to update sleep log")
-        return
-      }
-
-      console.log("[v0] Sleep log updated:", day, "hours:", hours)
+    if (!error) {
       setSleepLog((prev) => ({
         ...prev,
         [day]: hours,
       }))
-    } catch (err) {
-      console.error("[v0] Exception updating sleep:", err)
-      alert("Error updating sleep log. Check console for details.")
     }
   }
 
@@ -710,7 +633,10 @@ function TrackerView({
             placeholder="Add a new habit..."
             value={newHabitName}
             onChange={(e) => setNewHabitName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAddHabit()}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing || e.keyCode === 229) return
+              if (e.key === "Enter") handleAddHabit()
+            }}
             className="flex-1 h-10 px-3 rounded-md border border-input bg-background text-sm"
           />
           <Button onClick={handleAddHabit}>Add Habit</Button>
