@@ -84,7 +84,7 @@ export default function HabitTracker() {
 
       const { data } = await supabase
         .from("users")
-        .select("is_admin, name, active_group_id, role")
+        .select("is_admin, name, role")
         .eq("id", user.id)
         .single()
       if (data?.is_admin) {
@@ -103,15 +103,12 @@ export default function HabitTracker() {
     if (!currentUser) return
 
     const { data, error } = await supabase
-      .from("group_members")
-      .select(`
-        user:users(*)
-      `)
-      .eq("group_members.group_id", currentUser.active_group_id || "")
+      .from("users")
+      .select("id, name, is_private, role")
+      .order("name")
 
     if (!error && data) {
-      const users = data.map((item: any) => item.user).filter(Boolean)
-      setAllUsers(users)
+      setAllUsers(data)
     }
   }
 
@@ -634,7 +631,10 @@ function TrackerView({
             placeholder="Add a new habit..."
             value={newHabitName}
             onChange={(e) => setNewHabitName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAddHabit()}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing || e.keyCode === 229) return
+              if (e.key === "Enter") handleAddHabit()
+            }}
             className="flex-1 h-10 px-3 rounded-md border border-input bg-background text-sm"
           />
           <Button onClick={handleAddHabit}>Add Habit</Button>
