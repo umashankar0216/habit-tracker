@@ -160,16 +160,18 @@ export default function HabitTracker() {
       .select()
       .single()
 
-    if (!error && data) {
-      setHabits([
-        ...habits,
-        {
-          id: data.id,
-          name: data.name,
-          completedDays: new Set(),
-        },
-      ])
+    if (error || !data) {
+      throw new Error("Unable to save habit")
     }
+
+    setHabits([
+      ...habits,
+      {
+        id: data.id,
+        name: data.name,
+        completedDays: new Set(),
+      },
+    ])
   }
 
   const deleteHabit = async (id: string) => {

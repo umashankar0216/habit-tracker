@@ -18,18 +18,29 @@ import { Label } from "@/components/ui/label"
 interface AddHabitDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onAdd: (name: string) => void
+  onAdd: (name: string) => Promise<void>
 }
 
 export function AddHabitDialog({ open, onOpenChange, onAdd }: AddHabitDialogProps) {
   const [habitName, setHabitName] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (habitName.trim()) {
-      onAdd(habitName.trim())
+    const name = habitName.trim()
+    if (!name || isSubmitting) return
+
+    setIsSubmitting(true)
+    setError(null)
+    try {
+      await onAdd(name)
       setHabitName("")
       onOpenChange(false)
+    } catch {
+      setError("We couldn&apos;t save this habit. Please try again.")
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -50,14 +61,16 @@ export function AddHabitDialog({ open, onOpenChange, onAdd }: AddHabitDialogProp
               onChange={(e) => setHabitName(e.target.value)}
               className="mt-2"
               autoFocus
+              disabled={isSubmitting}
             />
+            {error ? <p className="mt-2 text-sm text-destructive" role="alert">{error}</p> : null}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={!habitName.trim()}>
-              Add Habit
+            <Button type="submit" disabled={!habitName.trim() || isSubmitting}>
+              {isSubmitting ? "Saving..." : "Add Habit"}
             </Button>
           </DialogFooter>
         </form>
